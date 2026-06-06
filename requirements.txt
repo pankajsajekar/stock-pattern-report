@@ -1,0 +1,11 @@
+# Indian Stock Chart Pattern Analyzer — Python dependencies
+# Install:  pip install -r requirements.txt
+# Pinned to versions verified working with this build (Python 3.13).
+
+yfinance==1.4.1       # stock data (Yahoo Finance)
+pandas==3.0.3         # data processing
+numpy==2.4.6          # numerics
+scipy==1.17.1         # peak/trough detection for patterns
+mplfinance==0.12.10b0 # candlestick charts
+matplotlib==3.10.9    # plotting backend (mplfinance dependency)
+Jinja2==3.1.6         # HTML report templating
