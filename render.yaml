@@ -1,0 +1,11 @@
+# Render Blueprint — lets you deploy by pointing Render at this repo.
+# Free plan: sleeps after 15 min idle (~50s cold start), 512 MB RAM.
+services:
+  - type: web
+    name: stock-pattern-analyzer
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --timeout 120 --workers 1 --bind 0.0.0.0:$PORT
+    healthCheckPath: /healthz
+    autoDeploy: true

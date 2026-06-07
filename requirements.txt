@@ -8,3 +8,5 @@ numpy==2.4.6          # numerics
 scipy==1.17.1         # peak/trough detection for patterns
 plotly==6.8.0         # interactive candlestick charts (zoom/pan/hover)
 Jinja2==3.1.6         # HTML report templating
+Flask==3.1.0          # web front-end (app.py)
+gunicorn==23.0.0      # production WSGI server (Render/HF use this)
