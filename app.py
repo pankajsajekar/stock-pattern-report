@@ -11,7 +11,6 @@ Production:  gunicorn app:app         (Render/HF use this via Procfile)
 """
 
 import os
-from datetime import datetime
 
 from flask import Flask, request, Response, render_template_string
 
@@ -24,10 +23,11 @@ app = Flask(__name__)
 # (each symbol = a network fetch + indicators + chart build).
 MAX_SYMBOLS = 12
 
-# CDN mode for charts: the report stays small and Plotly loads from the CDN.
-# (Visitors are on real browsers with internet, so this is the right choice
-# for a hosted site — embedding the ~3MB library per page would be wasteful.)
-EMBED_JS = False
+# Embed Plotly.js inline in the report (loaded once in <head>, not per chart).
+# Self-contained = charts always render regardless of CDN availability/version.
+# Adds ~4.8MB to each report response, which is fine for occasional on-demand use.
+# Set to False to load Plotly from the CDN instead (smaller pages, needs the CDN).
+EMBED_JS = True
 
 FORM_PAGE = """<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
@@ -89,29 +89,6 @@ def _parse_symbols(raw: str):
     return out[:MAX_SYMBOLS]
 
 
-def _render_report_string(results, period):
-    """Same ordering/render as analyze.render_report, but returns a string
-    instead of writing a file (so we can stream it straight to the browser)."""
-    ok = [r for r in results if r.ok]
-    order = {"bullish": 0, "neutral": 1, "bearish": 2}
-    results_sorted = sorted(
-        results,
-        key=lambda r: (0 if r.ok else 1, order.get(r.overall_bias, 1),
-                       -r.change_pct if r.ok else 0),
-    )
-    return analyze.Template(analyze.HTML_TEMPLATE).render(
-        results=results_sorted,
-        generated=datetime.now().strftime("%Y-%m-%d %H:%M"),
-        period=period,
-        ok_count=len(ok),
-        total=len(results),
-        n_bull=sum(1 for r in ok if r.overall_bias == "bullish"),
-        n_neu=sum(1 for r in ok if r.overall_bias == "neutral"),
-        n_bear=sum(1 for r in ok if r.overall_bias == "bearish"),
-        embed_js=EMBED_JS,
-    )
-
-
 @app.route("/")
 def index():
     return render_template_string(
@@ -134,13 +111,13 @@ def run():
     results = []
     for sym in symbols:
         try:
-            results.append(analyze.analyze_symbol(sym, period, embed_js=EMBED_JS))
+            results.append(analyze.analyze_symbol(sym, period))
         except Exception as e:  # never let one bad symbol 500 the whole page
             r = analyze.StockResult(symbol=sym, ok=False, error=str(e))
             results.append(r)
 
     try:
-        html = _render_report_string(results, period)
+        html = analyze.render_report_html(results, period, embed_js=EMBED_JS)
     except Exception as e:
         return Response(f"<p style='color:#ef5350'>Report render failed: {e}</p>",
                         mimetype="text/html", status=500)

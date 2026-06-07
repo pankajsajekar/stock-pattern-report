@@ -396,8 +396,13 @@ C_UP, C_DOWN = "#26a69a", "#ef5350"
 C_SMA = {"sma20": "#ffa726", "sma50": "#42a5f5", "sma200": "#ab47bc"}
 
 
-def make_chart_html(df: pd.DataFrame, s: pd.DataFrame, symbol: str, sup, res, embed_js) -> str:
-    """Build an interactive 3-panel Plotly chart, return an HTML div string."""
+def make_chart_html(df: pd.DataFrame, s: pd.DataFrame, symbol: str, sup, res) -> str:
+    """Build an interactive 3-panel Plotly chart, return an HTML div string.
+
+    The Plotly library itself is loaded once in the report <head> (see
+    render_report), so every chart div is library-free (include_plotlyjs=False).
+    This avoids per-chart bloat and guarantees Plotly is defined before any
+    chart script runs, regardless of how the cards are sorted."""
     try:
         x = pd.to_datetime(df.index)
         fig = make_subplots(
@@ -459,7 +464,7 @@ def make_chart_html(df: pd.DataFrame, s: pd.DataFrame, symbol: str, sup, res, em
         fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])])
 
         return pio.to_html(
-            fig, include_plotlyjs=("inline" if embed_js else False),
+            fig, include_plotlyjs=False,
             full_html=False, default_height="600px",
             config={"responsive": True, "displaylogo": False,
                     "modeBarButtonsToRemove": ["select2d", "lasso2d"]},
@@ -472,7 +477,7 @@ def make_chart_html(df: pd.DataFrame, s: pd.DataFrame, symbol: str, sup, res, em
 # =============================================================================
 # Analysis driver
 # =============================================================================
-def analyze_symbol(symbol: str, period: str, embed_js: bool) -> StockResult:
+def analyze_symbol(symbol: str, period: str) -> StockResult:
     res = StockResult(symbol=symbol)
     try:
         df = fetch_history(symbol, period)
@@ -488,7 +493,7 @@ def analyze_symbol(symbol: str, period: str, embed_js: bool) -> StockResult:
         bias, suggestion = build_suggestion(ind, patterns, sup, resist, res.last_price)
         res.overall_bias = bias
         res.suggestion = suggestion
-        res.chart_html = make_chart_html(df, s, symbol, sup, resist, embed_js)
+        res.chart_html = make_chart_html(df, s, symbol, sup, resist)
     except Exception as e:
         res.ok = False
         res.error = str(e)
@@ -502,7 +507,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Stock Pattern Analysis — {{ generated }}</title>
-{% if not embed_js %}<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>{% endif %}
+{% if embed_js %}<script charset="utf-8">{{ plotly_js|safe }}</script>{% else %}<script src="https://cdn.plot.ly/plotly-3.6.0.min.js" charset="utf-8"></script>{% endif %}
 <style>
   :root { --bull:#26a69a; --bear:#ef5350; --neu:#7a7a7a; --bg:#0d0f15; --card:#1a1d27;
           --line:#262a36; --txt:#e6e6e6; --muted:#8b92a1; }
@@ -673,25 +678,40 @@ function applyFilter(){
 
 
 def render_report(results, period, out_path, embed_js):
-    ok = [r for r in results if r.ok]
+    html = render_report_html(results, period, embed_js)
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(html)
+
+
+def render_report_html(results, period, embed_js) -> str:
+    """Render the full report HTML to a string (shared by CLI + web front-end).
+
+    Sorts results (bullish→neutral→bearish, errors last) and, when embed_js is
+    True, inlines the ~4.8MB Plotly library into <head> so the report is fully
+    self-contained; otherwise it loads from the CDN."""
     order = {"bullish": 0, "neutral": 1, "bearish": 2}
     results_sorted = sorted(
         results,
         key=lambda r: (0 if r.ok else 1, order.get(r.overall_bias, 1), -r.change_pct if r.ok else 0),
     )
-    html = Template(HTML_TEMPLATE).render(
+    ok = [r for r in results_sorted if r.ok]
+    # Pull the library source only when embedding (avoids the cost in CDN mode).
+    plotly_js = ""
+    if embed_js:
+        from plotly.offline import get_plotlyjs
+        plotly_js = get_plotlyjs()
+    return Template(HTML_TEMPLATE).render(
         results=results_sorted,
         generated=datetime.now().strftime("%Y-%m-%d %H:%M"),
         period=period,
         ok_count=len(ok),
-        total=len(results),
+        total=len(results_sorted),
         n_bull=sum(1 for r in ok if r.overall_bias == "bullish"),
         n_neu=sum(1 for r in ok if r.overall_bias == "neutral"),
         n_bear=sum(1 for r in ok if r.overall_bias == "bearish"),
         embed_js=embed_js,
+        plotly_js=plotly_js,
     )
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write(html)
 
 
 # =============================================================================
@@ -729,17 +749,13 @@ def main():
     if not symbols:
         sys.exit("No symbols to analyze.")
 
-    # When embedding, put plotly.js in only the FIRST chart; the rest reuse the
-    # already-loaded global. (CDN mode loads it once via a <script> tag in <head>.)
+    # Plotly.js is loaded once in the report <head> (inline when embedding, else
+    # from the CDN); individual charts never carry the library — see render_report.
     print(f"Analyzing {len(symbols)} symbols (period={args.period})...")
     results = []
-    first_chart = True
     for i, sym in enumerate(symbols, 1):
         print(f"  [{i}/{len(symbols)}] {sym} ...", end=" ", flush=True)
-        embed = embed_js and first_chart
-        r = analyze_symbol(sym, args.period, embed_js=embed)
-        if r.ok and r.chart_html:
-            first_chart = False  # only the first successful chart carries the library
+        r = analyze_symbol(sym, args.period)
         print("OK" if r.ok else f"FAIL ({r.error})")
         results.append(r)
 
