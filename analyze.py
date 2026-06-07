@@ -527,7 +527,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .fbtn.bull.active { background:var(--bull); border-color:var(--bull);}
   .fbtn.bear.active { background:var(--bear); border-color:var(--bear);}
   .fbtn.neu.active  { background:var(--neu); border-color:var(--neu);}
-  .summary { padding:16px 32px; }
+  .summary { padding:16px 32px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
   table.idx { width:100%; border-collapse:collapse; font-size:13px; }
   table.idx th, table.idx td { padding:8px 10px; text-align:left; border-bottom:1px solid var(--line); }
   table.idx th { color:var(--muted); font-weight:600; cursor:pointer; user-select:none; position:sticky; top:0; }
@@ -555,6 +555,24 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   a.anchor { color:inherit; text-decoration:none; }
   a.anchor:hover { color:#42a5f5; }
   .hidden { display:none !important; }
+
+  /* ---- Mobile / small screens ---- */
+  @media (max-width: 640px) {
+    header { padding:14px 16px; }
+    header h1 { font-size:18px; }
+    header p { font-size:12px; }
+    .controls input { width:100%; }
+    .summary { padding:12px 16px; }
+    table.idx { font-size:12px; min-width:520px; }   /* keep columns legible; .summary scrolls */
+    table.idx th, table.idx td { padding:6px 8px; }
+    .cards { padding:8px 12px 40px; }
+    .card { padding:14px 14px; margin:14px 0; border-radius:12px; }
+    .card h2 { font-size:17px; flex-wrap:wrap; gap:6px; }
+    .row { gap:14px; }
+    .col-chart, .col-meta { flex:1 1 100%; }          /* stack chart above details */
+    .kv b { min-width:92px; }
+    .disclaimer { padding:0 16px 28px; }
+  }
 </style></head><body>
 <header>
   <h1>📈 Indian Stock Chart Pattern Analysis</h1>
